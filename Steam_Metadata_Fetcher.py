@@ -1,4 +1,3 @@
-# Update Steam_Metadata_Fetcher.py with basic API client
 import sys
 import os
 import glob
@@ -7,25 +6,23 @@ from dotenv import load_dotenv
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, 
                              QWidget, QPushButton, QLabel, QTextEdit,
                              QHBoxLayout, QGroupBox, QProgressBar,
-                             QLineEdit, QMessageBox)
+                             QLineEdit, QMessageBox, QListWidget, 
+                             QListWidgetItem, QSplitter)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
 # Load environment variables from .env file
-load_dotenv()  # Load variables from .env file
-API_KEY = os.getenv('API_KEY')  # Get the API key from environment variables
+load_dotenv()
+API_KEY = os.getenv('API_KEY')
 
-"""Main Client"""
 class SteamGridDbClient:
     def __init__(self):
         self.base_url = "https://www.steamgriddb.com/api/v2"
         self.api_key = API_KEY
     
     def set_api_key(self, api_key):
-        """Set the API key for authentication"""
         self.api_key = api_key.strip()
     
     def search_game(self, game_name):
-        """Search for a game by name"""
         if not self.api_key:
             return {"error": "API key not set"}
         
@@ -42,7 +39,6 @@ class SteamGridDbClient:
             return {"error": f"Request failed: {str(e)}"}
 
 class ScanThread(QThread):
-    """Thread for scanning games to prevent UI freezing"""
     progress_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(list)
     
@@ -75,8 +71,7 @@ class ScanThread(QThread):
                 search_pattern = os.path.join(path, ext)
                 try:
                     files = glob.glob(search_pattern, recursive=True)
-                    for file in files[:10]:  # Limit for testing
-                        # Filter out system files
+                    for file in files[:10]:
                         filename = os.path.basename(file)
                         if any(skip in filename.lower() for skip in ['unins', 'install', 'setup', 'unreal']):
                             continue
@@ -88,22 +83,18 @@ class ScanThread(QThread):
                 except Exception as e:
                     self.progress_signal.emit(f"Error scanning {path}: {e}")
         
-        return found_games[:15]  # Limit results for testing
-
-class GameScanner:
-    def __init__(self):
-        self.scan_thread = None
+        return found_games[:15]
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.scanner = GameScanner()
         self.steamgrid_client = SteamGridDbClient()
+        self.found_games = []
         self.init_ui()
     
     def init_ui(self):
         self.setWindowTitle("Steam Metadata Fetcher")
-        self.setGeometry(100, 100, 1000, 800)
+        self.setGeometry(100, 100, 1200, 800)
         
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -146,10 +137,31 @@ class MainWindow(QMainWindow):
         
         layout.addWidget(scan_group)
         
-        # Results area
-        self.output_area = QTextEdit()
-        self.output_area.setPlaceholderText("Discovered games and metadata will appear here...")
-        layout.addWidget(self.output_area)
+        # Create splitter for game list and details
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        layout.addWidget(splitter)
+        
+        # Game list on the left
+        self.game_list_widget = QListWidget()
+        self.game_list_widget.itemSelectionChanged.connect(self.on_game_selected)
+        splitter.addWidget(self.game_list_widget)
+        
+        # Details area on the right
+        details_widget = QWidget()
+        details_layout = QVBoxLayout(details_widget)
+        
+        self.details_label = QLabel("Select a game to view details")
+        self.details_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        details_layout.addWidget(self.details_label)
+        
+        self.details_text = QTextEdit()
+        self.details_text.setPlaceholderText("Game details and metadata will appear here...")
+        details_layout.addWidget(self.details_text)
+        
+        splitter.addWidget(details_widget)
+        
+        # Set splitter proportions
+        splitter.setSizes([400, 600])
         
         # Connect buttons
         self.save_api_btn.clicked.connect(self.save_api_key)
@@ -161,7 +173,7 @@ class MainWindow(QMainWindow):
         api_key = self.api_key_input.text()
         if api_key:
             self.steamgrid_client.set_api_key(api_key)
-            self.output_area.append("API key saved successfully!")
+            self.details_text.append("API key saved successfully!")
         else:
             QMessageBox.warning(self, "Warning", "Please enter an API key")
     
@@ -172,7 +184,9 @@ class MainWindow(QMainWindow):
             return
         
         self.progress_bar.setVisible(True)
-        self.output_area.append(f"Starting {scan_type} game scan...")
+        self.game_list_widget.clear()
+        self.details_text.clear()
+        self.details_text.append(f"Starting {scan_type} game scan...")
         
         self.scan_thread = ScanThread(scan_type)
         self.scan_thread.progress_signal.connect(self.update_progress)
@@ -180,35 +194,58 @@ class MainWindow(QMainWindow):
         self.scan_thread.start()
     
     def update_progress(self, message):
-        self.output_area.append(message)
+        self.details_text.append(message)
     
     def scan_finished(self, games):
         self.progress_bar.setVisible(False)
-        self.output_area.append("Scan completed! Found games:\\n")
+        self.found_games = games
+        self.details_text.append(f"Scan completed! Found {len(games)} games.\\n")
         
-        for game in games:
+        # Populate game list
+        for i, game in enumerate(games):
             if isinstance(game, dict):
-                self.output_area.append(f"  - {game['name']} (Local)")
-                # Try to find metadata for this game
-                self.lookup_game_metadata(game['name'])
+                item = QListWidgetItem(f"{game['name']} (Local)")
+                item.setData(Qt.ItemDataRole.UserRole, i)  # Store index
+                self.game_list_widget.addItem(item)
             else:
-                self.output_area.append(f"  - {game}")
+                item = QListWidgetItem(str(game))
+                self.game_list_widget.addItem(item)
+    
+    def on_game_selected(self):
+        selected_items = self.game_list_widget.selectedItems()
+        if not selected_items:
+            return
         
-        self.output_area.append("")  # Empty line
+        item = selected_items[0]
+        game_index = item.data(Qt.ItemDataRole.UserRole)
+        
+        if game_index is not None and game_index < len(self.found_games):
+            game = self.found_games[game_index]
+            if isinstance(game, dict):
+                self.show_game_details(game)
+    
+    def show_game_details(self, game):
+        self.details_text.clear()
+        self.details_text.append(f"Game: {game['name']}")
+        self.details_text.append(f"Path: {game['path']}")
+        self.details_text.append(f"Type: {game['type']}")
+        self.details_text.append("\\nSearching for metadata...")
+        
+        # Look up metadata
+        self.lookup_game_metadata(game['name'])
     
     def lookup_game_metadata(self, game_name):
-        """Look up game metadata using SteamGridDB"""
-        self.output_area.append(f"    Searching metadata for: {game_name}")
         result = self.steamgrid_client.search_game(game_name)
         
         if 'data' in result and result['data']:
-            games_found = result['data'][:3]  # Show first 3 results
+            self.details_text.append("\\n🎮 Found matching games:")
+            games_found = result['data'][:5]
             for game in games_found:
-                self.output_area.append(f"      ✓ {game['name']} (ID: {game.get('id', 'N/A')})")
+                self.details_text.append(f"  ✓ {game['name']} (ID: {game.get('id', 'N/A')})")
         elif 'error' in result:
-            self.output_area.append(f"      ✗ Error: {result['error']}")
+            self.details_text.append(f"\\n❌ Error: {result['error']}")
         else:
-            self.output_area.append("      ✗ No metadata found")
+            self.details_text.append("\\n❌ No metadata found")
 
 def main():
     app = QApplication(sys.argv)
