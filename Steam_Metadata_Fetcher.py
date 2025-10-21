@@ -24,7 +24,7 @@ class SteamGridDbClient:
     
     def search_game(self, game_name):
         if not self.api_key:
-            return {"error": "API key not set"}
+            return {"error": "API key not set. Please retrieve one at https://www.steamgriddb.com/profile/preferences/api"}
         
         headers = {"Authorization": f"Bearer {self.api_key}"}
         url = f"{self.base_url}/search/autocomplete/{requests.utils.quote(game_name)}"
