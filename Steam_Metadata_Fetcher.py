@@ -84,6 +84,8 @@ class ScanThread(QThread):
                     self.progress_signal.emit(f"Error scanning {path}: {e}")
         
         return found_games[:15]
+    def scan_steam_games(self):
+    def scan_epic_games(self):
 
 class MainWindow(QMainWindow):
     def __init__(self):
