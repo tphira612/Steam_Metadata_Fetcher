@@ -177,7 +177,7 @@ class MainWindow(QMainWindow):
             self.steamgrid_client.set_api_key(api_key)
             self.details_text.append("API key saved successfully!")
         else:
-            QMessageBox.warning(self, "Warning", "Please enter an API key")
+            QMessageBox.warning(self, "Warning", "Please enter an API key. You can retrieve on at SteamGridDB.")
     
     def start_scan(self, scan_type):
         if scan_type == "local" and not self.steamgrid_client.api_key:
